@@ -1,0 +1,25 @@
+{
+  "name": "musicself",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "discord.js-selfbot-v13": "^3.6.1",
+    "dotenv": "^16.5.0",
+    "erela.js": "^2.4.0",
+    "erela.js-spotify": "^1.2.0",
+    "express": "^5.1.0",
+    "fs": "^0.0.1-security",
+    "lavalink-client": "^2.7.7",
+    "node-fetch": "^2.7.0",
+    "path": "^0.12.7",
+    "youtube-sr": "^4.3.12"
+  }
+}
