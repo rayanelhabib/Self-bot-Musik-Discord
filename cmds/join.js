@@ -28,8 +28,8 @@ module.exports = {
                     guildId: message.guild.id,
                     voiceChannelId: message.member.voice.channel.id,
                     textChannelId: message.channel.id,
-                    selfDeaf: true,
-                    selfMute: true,
+                    selfDeaf: false,
+                    selfMute: false,
                 });
             }
             

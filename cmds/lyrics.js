@@ -1,5 +1,6 @@
 const config = require('../config.json');
 const http = require('http');
+const https = require('https');
 
 module.exports = {
     name: 'lyrics',
@@ -68,18 +69,67 @@ module.exports = {
                             message.channel.send(chunk);
                         }
                     }
-                } catch (e) {
+                    } catch (e) {
                     console.error('Error parsing lyrics response:', e);
-                    message.channel.send('❌ An error occurred while fetching lyrics.');
+                    // Try external fallback
+                    fetchExternalLyrics(currentTrack.info.title, currentTrack.info.author)
+                        .then(lyricsText => {
+                            if (!lyricsText) return message.channel.send('❌ An error occurred while fetching lyrics.');
+                            message.channel.send(`**Lyrics for ${currentTrack.info.title}**:`);
+                            const maxChars = 2000;
+                            for (let i = 0; i < lyricsText.length; i += maxChars) {
+                                message.channel.send(lyricsText.substring(i, i + maxChars));
+                            }
+                        })
+                        .catch(err => {
+                            console.error('External lyrics fallback failed:', err);
+                            message.channel.send('❌ An error occurred while fetching lyrics.');
+                        });
                 }
             });
         });
 
         req.on('error', error => {
             console.error('Error requesting lyrics:', error);
-            message.channel.send('❌ Failed to connect to the lyrics server.');
+            // Attempt external fallback before giving up
+            fetchExternalLyrics(currentTrack.info.title, currentTrack.info.author)
+                .then(lyricsText => {
+                    if (!lyricsText) return message.channel.send('❌ Failed to connect to the lyrics server and no fallback lyrics found. Ensure the lyrics service is running on port 2334.');
+                    message.channel.send(`**Lyrics for ${currentTrack.info.title}**:`);
+                    const maxChars = 2000;
+                    for (let i = 0; i < lyricsText.length; i += maxChars) {
+                        message.channel.send(lyricsText.substring(i, i + maxChars));
+                    }
+                })
+                .catch(err => {
+                    console.error('External lyrics fallback failed:', err);
+                    message.channel.send('❌ Failed to connect to the lyrics server. Ensure the lyrics service is running on port 2334.');
+                });
         });
 
         req.end();
+        
+        // Fallback: query a public lyrics API (some-random-api.ml) if local lyrics server fails
+        function fetchExternalLyrics(title, author) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const query = encodeURIComponent(`${title} ${author || ''}`.trim());
+                    const url = `https://some-random-api.ml/lyrics?title=${query}`;
+                    https.get(url, res => {
+                        let body = '';
+                        res.on('data', chunk => body += chunk);
+                        res.on('end', () => {
+                            try {
+                                const j = JSON.parse(body);
+                                if (j && j.lyrics) return resolve(j.lyrics);
+                                return resolve(null);
+                            } catch (e) {
+                                return reject(e);
+                            }
+                        });
+                    }).on('error', e => reject(e));
+                } catch (e) { reject(e); }
+            });
+        }
     },
 };

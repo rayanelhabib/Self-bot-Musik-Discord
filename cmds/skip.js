@@ -19,7 +19,11 @@ module.exports = {
         }
 
         const skippedTrack = player.queue.current;
-        const wasLastTrack = player.queue.size === 0;
+        
+        // Check if there are tracks left in the queue
+        if (player.queue.size === 0) {
+            return message.reply('❌ This is the last track in the queue. Nothing to skip to.');
+        }
 
         try {
             // player.skip() will stop the current track and trigger the trackEnd event, which will start the next song.

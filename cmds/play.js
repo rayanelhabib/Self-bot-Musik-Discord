@@ -57,8 +57,8 @@ module.exports = {
             guildId: message.guild.id,
             voiceChannelId: message.member.voice.channel.id,
             textChannelId: message.channel.id,
-            selfDeaf: true,
-            selfMute: true,
+            selfDeaf: false,
+            selfMute: false,
             volume: 90,
         });
         }
@@ -66,9 +66,8 @@ module.exports = {
         const query = args.join(' ');
 
         try {
-            if (!player.connected) {
-                await player.connect();
-            }
+            // Start connecting the player but don't wait — do the search in parallel to reduce startup latency
+            const connectPromise = player.connected ? Promise.resolve() : player.connect();
 
             if (!player.get('queueRepeatStartIndex')) player.set('queueRepeatStartIndex', 0);
             if (!player.get('queueRepeatHandlerSet')) player.set('queueRepeatHandlerSet', false);
@@ -80,7 +79,12 @@ module.exports = {
 
             const isUrl = query.match(/^https?:\/\//i);
 
+            function sleep(ms) {
+                return new Promise(r => setTimeout(r, ms));
+            }
+
             async function searchWithProvider(searchQuery, provider, retryCount = 0) {
+                const maxRetries = 3;
                 try {
                     const searchTerm = provider ? `${provider}:${searchQuery}` : searchQuery;
                     const result = await player.search(searchTerm, { requester: message.author });
@@ -117,6 +121,14 @@ module.exports = {
                     return result;
                 } catch (error) {
                     console.error(`Error searching with ${provider}:`, error);
+                    // Retry on timeout-like errors
+                    const isTimeout = error && (error.name === 'TimeoutError' || (error.message && error.message.toLowerCase().includes('timeout')) || error.type === 'request-timeout');
+                    if (isTimeout && retryCount < maxRetries) {
+                        const wait = 1000 * Math.pow(2, retryCount); // exponential backoff
+                        console.log(`Search timed out. Retrying in ${wait}ms (attempt ${retryCount + 1})`);
+                        await sleep(wait);
+                        return searchWithProvider(searchQuery, provider, retryCount + 1);
+                    }
                     return { loadType: "empty" };
                 }
             }
@@ -124,15 +136,15 @@ module.exports = {
             let res;
             // Prioritize Spotify for non-URL queries
             if (!isUrl) {
-                res = await searchWithProvider(query, 'spsearch');
-                // Fallback to YouTube if Spotify fails
+                // Prefer YouTube searches for lower latency, fallback to Spotify if empty
+                res = await searchWithProvider(query, 'ytsearch');
                 if (!res || res.loadType === 'empty' || res.loadType === 'error') {
-                    console.log(`[Play] Spotify search failed, falling back to YouTube for query: ${query}`);
-                    res = await searchWithProvider(query, 'ytsearch');
+                    console.log(`[Play] YouTube search failed or empty, falling back to Spotify for query: ${query}`);
+                    res = await searchWithProvider(query, 'spsearch');
                 }
             } else {
-                // Handle URL inputs directly
-                res = await player.search(query, { requester: message.author });
+                // Handle URL inputs via the same retrying search helper
+                res = await searchWithProvider(query, null);
             }
 
             if (res.loadType === "error" || res.loadType === "empty") {
@@ -155,6 +167,12 @@ module.exports = {
 
             // If the player is not already playing, start it.
             if (!wasPlaying) {
+                // Ensure connection completed before attempting to play
+                try {
+                    await connectPromise;
+                } catch (err) {
+                    console.error('Failed to connect player before playback:', err);
+                }
                 await player.play();
             }
         } catch (error) {
